@@ -1,7 +1,6 @@
 # dagster_sandbox/resources/impala_resource.py
 import dagster as dg
 from dagster import ConfigurableResource, EnvVar
-import ibis
 
 class ImpalaResource(ConfigurableResource):
     host: str = EnvVar("IMPALA_HOST")
