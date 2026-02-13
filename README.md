@@ -28,11 +28,14 @@ Tras ejecutar el script, el repositorio quedará organizado de la siguiente form
 ├── 📖 **README.md** (Guía general de Git)  
 └── 📂 **notebooks/** (Contenedor principal del framework)  
 ....├── 📂 **.venv/** (Entorno virtual con librerías)  
-....├── 📂 **layers/** ....│...└── 📂 **bronze/** ....│
-....│.......├── 📓 **run_bronze.ipynb** (Orquestador interactivo)  
+....├── 📂 **layers/** ....
+....│.└── 📂 **bronze/** ....│
+....│.......├── 📓 **run_bronze.ipynb** (Código de bronze)  
 ....│.......├── 🐍 **logic.py** (Funciones de validación)  
 ....│.......├── 🐍 **utils_bronze.py** (Conectores y helpers)  
 ....│.......├── 📂 **data_contracts/** (Definiciones YAML de tablas)  
+....│.......│.......├──🏷️ **nombre_tabla.yaml** 
+
 
 
 ....├── 📜 **pyproject.toml** (Manifiesto de dependencias UV)  
