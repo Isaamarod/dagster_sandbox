@@ -2,7 +2,7 @@
 
 # --- CONFIGURACIÓN ---
 PROJECT_NAME="proyecto_healthdatamad_notebooks"
-DISPLAY_NAME="Python ENV (HealthData MAD)"
+DISPLAY_NAME="HealthDataMADEnv"
 
 echo "🚀 Iniciando creación del proyecto: $PROJECT_NAME"
 
