@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # --- CONFIGURACIÓN ---
-PROJECT_NAME="PROYECTO_HEALTHDATAMAD_NOTEBOOKS"
+PROJECT_NAME="proyecto_healthdatamad_notebooks"
+DISPLAY_NAME="Python ENV (HealthData MAD)"
 
 echo "🚀 Iniciando creación del proyecto: $PROJECT_NAME"
 
 # 1. INSTALACIÓN DE UV (Si no existe)
 if ! command -v uv &> /dev/null
 then
-    echo "⚠️ 'uv' no encontrado. Instalando mediante pip..."
+    echo "⚠️ 'uv' no encontrado. Instalando..."
     pip install uv
 fi
 
@@ -32,31 +33,33 @@ EOF
     echo "✅ Archivo .env creado en notebooks/."
 fi
 
-# 4. GESTIÓN DE PROYECTO CON UV (Entramos en notebooks)
+# 4. GESTIÓN DE PROYECTO CON UV
 cd notebooks
-echo "🛠️ Inicializando proyecto uv dentro de /notebooks..."
-# Usamos --app para evitar la carpeta /src
+echo "🛠️ Inicializando proyecto uv..."
 uv init --app --name $PROJECT_NAME
 
 # 5. INSTALACIÓN DE LIBRERÍAS
-echo "📦 Instalando dependencias en notebooks/.venv..."
+# Incluimos ipykernel explícitamente para que el kernel funcione
+echo "📦 Instalando dependencias (esto puede tardar un poco)..."
 uv add \
     "python-dotenv>=1.2.1" \
     "ibis-framework[duckdb,impala]" \
     "pyyaml" \
     "ipykernel"
 
-# Sincronizar y limpiar archivos que sobran
 uv sync
-rm -f hello.py
+rm -f hello.py # los eliminamos vienen por defecto
 rm -f main.py
 
-# 6. GENERACIÓN DEL README (Dentro de notebooks)
+# 6. REGISTRO DEL KERNEL EN JUPYTER 🛰️
+# Esto permite que el entorno aparezca en el desplegable de Jupyter automáticamente
+echo "✨ Registrando el Kernel en Jupyter..."
+uv run python -m ipykernel install --user --name "$PROJECT_NAME" --display-name "$DISPLAY_NAME"
+
+# 7. GENERACIÓN DEL README
 cat << 'EOF' > README.md
 # 🟤 Framework Bronze (Notebooks Edition)
-
 Toda la lógica, el entorno virtual y la ejecución están centralizados en este directorio.
-
 ## 📂 Estructura Interna
 - **.venv/**: Entorno virtual del proyecto (gestionado por UV).
 - **pyproject.toml**: Archivo de configuración y dependencias.
@@ -64,19 +67,20 @@ Toda la lógica, el entorno virtual y la ejecución están centralizados en este
 - **run_bronze.ipynb**: Punto de ejecución.
 - **.env**: Credenciales de Impala.
 
-## 🚀 Uso
+## 🚀 Pasos a seguir 
 1. Rellena el archivo `.env`.
-2. Activa el entorno: `source .venv/bin/activate`.
-3. Define tus contratos YAML en `layers/bronze/data_contracts/`.
-4. Ejecuta `run_bronze.ipynb`.
+2. Abre tu Jupyter Lab / Notebook.
+3. **Selecciona el Kernel:** En la esquina superior derecha, elige **"$DISPLAY_NAME"**.
+4. ¡Listo para ejecutar!
 EOF
 
-cd .. # Volvemos a la raíz para el mensaje de cierre
+cd .. # Volvemos a la raíz
 
 echo "--------------------------------------------------"
-echo "✅ ¡Proyecto listo!"
-echo "📍 Todo se ha concentrado en la carpeta: /notebooks"
+echo "✅ ¡Proyecto y Kernel configurados con éxito!"
+echo "📍 Todo concentrado en la carpeta: /notebooks"
+echo "🖥️  Kernel registrado: $DISPLAY_NAME"
 echo "--------------------------------------------------"
-echo "💡 Para activar el entorno, ejecuta:"
-echo "   source notebooks/.venv/bin/activate"
+echo "💡 Importante: Si usas VSCode o Jupyter, ya deberías"
+echo "   ver el entorno disponible en la lista de Kernels."
 echo "--------------------------------------------------"
