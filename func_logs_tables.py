@@ -23,12 +23,12 @@ def types_compatible(expected: str, actual: str) -> bool:
     allowing for some flexibility in type naming conventions.
     Example: 'string' and 'varchar' would be considered compatible.
 
-    Parameters:
-    - expected (str): The expected type as defined in the contract.
-    - actual (str): The actual type obtained from the database schema.
+    Args:
+        expected (str): The expected type as defined in the contract.
+        actual (str): The actual type obtained from the database schema.
 
     Returns:
-    - bool: True if the types are considered compatible, False otherwise."""
+        bool: True if the types are considered compatible, False otherwise."""
 
     # Normalize to lowercase for comparison
     expected_l, actual_l = expected.lower(), actual.lower()
@@ -48,11 +48,11 @@ def get_last_row_count(log_file: Path) -> Optional[int]:
     the most recent count. If the log file does not exist or if there is an error
     during reading, it returns None.
 
-    Parameters:
-    - log_file (Path): The path to the log file for a specific table.
+    Args:
+        log_file (Path): The path to the log file for a specific table.
 
     Returns:
-    - Optional[int]: The last recorded row count if found, or None if not available."""
+        Optional[int]: The last recorded row count if found, or None if not available."""
 
     # Check if the log file exists
     if not log_file.exists():
@@ -83,13 +83,13 @@ def setup_table_logger(
     and it uses a standard format for log entries. If the logger already has handlers, they are cleared
     to avoid duplicate logging.
 
-    Parameters:
-    - table_name (str): The name of the table for which the logger is being set up.
-    - log_dir (Path): The directory where the log file will be created.
+    Args:
+        table_name (str): The name of the table for which the logger is being set up.
+        log_dir (Path): The directory where the log file will be created.
 
     Returns:
-    - Tuple[logging.Logger, logging.FileHandler, Path]: A tuple containing the configured logger,
-      the file handler, and the path to the log file."""
+        Tuple[logging.Logger, logging.FileHandler, Path]: A tuple containing the configured logger,
+        the file handler, and the path to the log file."""
 
     # Set up logger for the specific table
     log_file = log_dir / f"{table_name}.log"
@@ -125,19 +125,19 @@ def print_terminal_report(
     icons to indicate success or warnings, and it provides details about any missing columns, extra
     columns, or type mismatches in the schema.
 
-    Parameters:
-    - tablename (str): The name of the table being reported on.
-    - r_stat (str): The status of row count validation ("OK" or "MISMATCH").
-    - r_act (int): The actual row count obtained from the database.
-    - r_exp (int): The expected row count defined in the contract.
-    - r_diff (str): A string indicating the difference from the previous row count.
-    - s_ok (bool): A boolean indicating whether the schema validation passed.
-    - miss (List[str]): A list of missing columns in the actual schema compared to the contract.
-    - extra (List[str]): A list of extra columns in the actual schema that are not defined in the contract.
-    - mism (List[str]): A list of type mismatches between the actual schema and the expected schema defined in the contract.
+    Args:
+        tablename (str): The name of the table being reported on.
+        r_stat (str): The status of row count validation ("OK" or "MISMATCH").
+        r_act (int): The actual row count obtained from the database.
+        r_exp (int): The expected row count defined in the contract.
+        r_diff (str): A string indicating the difference from the previous row count.
+        s_ok (bool): A boolean indicating whether the schema validation passed.
+        miss (List[str]): A list of missing columns in the actual schema compared to the contract.
+        extra (List[str]): A list of extra columns in the actual schema that are not defined in the contract.
+        mism (List[str]): A list of type mismatches between the actual schema and the expected schema defined in the contract.
 
     Returns:
-    - None: This function does not return any value; it only prints the report to the terminal.
+        None: This function does not return any value; it only prints the report to the terminal.
     """
 
     icon = "✅" if (r_stat == "OK" and s_ok) else "⚠️"
@@ -172,16 +172,19 @@ def validate_table(
     occurs during the process, it logs the error and returns False. Otherwise, it returns True
     if both row count and schema validations pass.
 
-    Parameters:
-    - client (ibis.BaseBackend): The Ibis backend instance.
-    - table_name (str): The name of the table to validate.
-    - database (str): The name of the database containing the table.
-    - contract_path (Path): The path to the YAML contract file.
-    - log_dir (Path): The directory where log files will be stored.
-    - strict_types (bool): Whether to perform strict type checking.
+    Args:
+        client (ibis.BaseBackend): The Ibis backend instance.
+        table_name (str): The name of the table to validate.
+        database (str): The name of the database containing the table.
+        contract_path (Path): The path to the YAML contract file.
+        log_dir (Path): The directory where log files will be stored.
+        strict_types (bool): Whether to perform strict type checking.
 
     Returns:
-    - bool: True if the table passes validation, False otherwise.
+        bool: True if the table passes validation, False otherwise.
+
+    Raises:
+        Exception: If there is a critical error during the validation process, an exception is raised and logged.
     """
 
     # Set up logger for this table
@@ -292,15 +295,15 @@ def run_global_audit(
     a summary report indicating how many tables passed validation out of the total
     number of tables audited.
 
-    Parameters:
-    - client (ibis.BaseBackend): The Ibis backend instance.
-    - tables (List[str]): A list of table names to be audited.
-    - db_name (str): The name of the database containing the tables.
-    - c_dir (Path): The directory where contract YAML files are stored.
-    - l_dir (Path): The directory where log files will be stored.
+    Args:
+        client (ibis.BaseBackend): The Ibis backend instance.
+        tables (List[str]): A list of table names to be audited.
+        db_name (str): The name of the database containing the tables.
+        c_dir (Path): The directory where contract YAML files are stored.
+        l_dir (Path): The directory where log files will be stored.
 
     Returns:
-    - None: This function does not return any value; it only performs the audit and prints the results to the terminal.
+        None: This function does not return any value; it only performs the audit and prints the results to the terminal.
     """
     print(f"--- STARTING AUDIT ON DB:{db_name} ---")
     l_dir.mkdir(parents=True, exist_ok=True)
