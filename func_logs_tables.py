@@ -1,165 +1,318 @@
 import logging
-import yaml
 import re
 from pathlib import Path
-import ibis
+from typing import List, Optional, Tuple
 
-def get_last_row_count(log_file: Path) -> int | None:
-    """This function reads the log file if it exists and extracts the last row count from it.
-    It looks for lines that contain either 'rows' (indicating a correct log entry) or 'Actual'
-    (indicating a mismatch) and captures the number following those keywords. If the log file
-    does not exist or if there is an error during reading, it returns None.
-    
-     Args:
-        log_file (Path): The path to the log file from which to extract the last row count.
-    
-     Returns:
-        int | None: The last row count extracted from the log file, or None if the file does
-        not exist or if there is an error during reading."""
-    
-    # Verify if the log file exists; if not, return None
+import ibis
+import yaml
+
+# --- GLOBAL CONFIGURATION ---
+TYPE_GROUPS = {
+    "string": ["string", "str", "varchar", "text", "String"],
+    "int": ["int", "int32", "int64", "integer", "bigint", "Int64", "Int32"],
+    "float": ["float", "float32", "float64", "double", "decimal", "Float64", "Decimal"],
+    "bool": ["bool", "boolean", "Boolean"],
+    "date": ["date", "Date"],
+    "timestamp": ["timestamp", "datetime", "Timestamp"],
+}
+
+
+# --- AUXILIARY FUNCTIONS ---
+def types_compatible(expected: str, actual: str) -> bool:
+    """This function checks if two types are compatible based on logical groups,
+    allowing for some flexibility in type naming conventions.
+    Example: 'string' and 'varchar' would be considered compatible.
+
+    Parameters:
+    - expected (str): The expected type as defined in the contract.
+    - actual (str): The actual type obtained from the database schema.
+
+    Returns:
+    - bool: True if the types are considered compatible, False otherwise."""
+
+    # Normalize to lowercase for comparison
+    expected_l, actual_l = expected.lower(), actual.lower()
+
+    # Check if both types belong to the same group
+    for group in TYPE_GROUPS.values():
+        if any(t.lower() in expected_l for t in group) and any(
+            t.lower() in actual_l for t in group
+        ):
+            return True
+    return expected_l == actual_l
+
+
+def get_last_row_count(log_file: Path) -> Optional[int]:
+    """This function reads the log file to find the last recorded row count for
+    a table. It looks for lines that indicate the number of rows processed and extracts
+    the most recent count. If the log file does not exist or if there is an error
+    during reading, it returns None.
+
+    Parameters:
+    - log_file (Path): The path to the log file for a specific table.
+
+    Returns:
+    - Optional[int]: The last recorded row count if found, or None if not available."""
+
+    # Check if the log file exists
     if not log_file.exists():
         return None
-    
-    # Compile a regex pattern to match lines that contain either "rows" or "Actual" followed by a number
-    pattern = re.compile(r"(\d+)\srows|Actual\s(\d+)") 
-    
-    # Initialize last_count to None; it will be updated if a valid line is found in the log file
-    last_count = None
+
+    # Regular expression to match lines like "100 rows" or "Actual 100"
+    pattern = re.compile(r"(\d+)\srows|Actual\s(\d+)")
+    last_count = (
+        None  # Initialize last_count to None to handle cases where no matches are found
+    )
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, "r", encoding="utf-8") as f:
             for line in f:
                 matches = pattern.findall(line)
                 for match in matches:
-                    # Extract the number from the matched line
                     val = match[0] if match[0] else match[1]
                     last_count = int(val)
-    # If there is any exception during file reading or regex matching, return None
-    except Exception:
+    except Exception:  # If there's an error reading the file, we simply return None
         return None
-    
     return last_count
 
-def log_table_configurer(table_name: str, log_output_dir: Path) -> tuple[logging.Logger, logging.FileHandler, Path, int | None]:
-    """This function configures a logger for a specific table. It creates a log file for the table
-    in the specified output directory and sets up a logger that writes to that file. It also retrieves
-    the last row count from the log file before configuring the logger, which can be used for comparison in subsequent runs.
-    
-     Args:
-        table_name (str): The name of the table for which to configure the logger.
-        log_output_dir (Path): The directory where the log file will be created.
+
+def setup_table_logger(
+    table_name: str, log_dir: Path
+) -> Tuple[logging.Logger, logging.FileHandler, Path]:
+    """This function sets up a logger for a specific table. It creates a log file named after the table
+    in the specified log directory. The logger is configured to write INFO level messages to the file,
+    and it uses a standard format for log entries. If the logger already has handlers, they are cleared
+    to avoid duplicate logging.
+
+    Parameters:
+    - table_name (str): The name of the table for which the logger is being set up.
+    - log_dir (Path): The directory where the log file will be created.
+
     Returns:
-        tuple: A tuple containing the configured logger, the file handler, the path to the log file,
-        and the last row count extracted from the log file (or None if the file does not exist or if there was an error)."""
-    
-    # Ensure the log output directory exists; if not, create it
-    log_file = log_output_dir / f"{table_name}.log"
-    
-    # Get the last row count from the log file (if it exists) to compare with the current count later
-    previous_rows = get_last_row_count(log_file)
-    
-    # Configure the logger for the specific table
+    - Tuple[logging.Logger, logging.FileHandler, Path]: A tuple containing the configured logger,
+      the file handler, and the path to the log file."""
+
+    # Set up logger for the specific table
+    log_file = log_dir / f"{table_name}.log"
     logger = logging.getLogger(table_name)
     logger.setLevel(logging.INFO)
+
+    # Clear existing handlers to avoid duplicate logs if the function is called multiple times.
     if logger.hasHandlers():
         logger.handlers.clear()
-    
-    # Mode 'a' is used to append to the log file if it already exists
-    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    
-    return logger, file_handler, log_file, previous_rows
 
-def log_multiples_tables_ibis(
-        client: ibis.BaseBackend,
-        table_list: list[str],
-        database_name: str,
-        contract_dir: Path,
-        log_output_dir: Path
-        ):
-    """This function iterates over a list of table names, loads the corresponding data contracts from YAML files,
-    and logs the actual row counts compared to the expected row counts defined in the contracts. It also handles
-    logging of any mismatches and keeps track of the previous row counts for comparison in subsequent runs.
-    
-     Args:
-        client (ibis.BaseBackend): An instance of an Ibis backend client used to connect to the database and execute queries.
-        table_list (list[str]): A list of table names to process.
-        database_name (str): The name of the database where the tables are located.
-        contract_dir (Path): The directory where the YAML data contracts are stored.
-        log_output_dir (Path): The directory where the log files will be created.""
-        
+    # Create file handler for the table log and set formatter
+    handler = logging.FileHandler(log_file, mode="a", encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger, handler, log_file
+
+
+def print_terminal_report(
+    tablename: str,
+    r_stat: str,
+    r_act: int,
+    r_exp: int,
+    r_diff: str,
+    s_ok: bool,
+    miss: List[str],
+    extra: List[str],
+    mism: List[str],
+) -> None:
+    """This function prints a summary report to the terminal for a specific table after validation.
+    It displays the table name, the status of row count validation, the actual and expected row counts,
+    the difference from the previous count, and the results of schema validation. The report uses
+    icons to indicate success or warnings, and it provides details about any missing columns, extra
+    columns, or type mismatches in the schema.
+
+    Parameters:
+    - tablename (str): The name of the table being reported on.
+    - r_stat (str): The status of row count validation ("OK" or "MISMATCH").
+    - r_act (int): The actual row count obtained from the database.
+    - r_exp (int): The expected row count defined in the contract.
+    - r_diff (str): A string indicating the difference from the previous row count.
+    - s_ok (bool): A boolean indicating whether the schema validation passed.
+    - miss (List[str]): A list of missing columns in the actual schema compared to the contract.
+    - extra (List[str]): A list of extra columns in the actual schema that are not defined in the contract.
+    - mism (List[str]): A list of type mismatches between the actual schema and the expected schema defined in the contract.
+
     Returns:
-        None: This function does not return any value; it performs logging as a side effect."""
-    
-    print("Starting the logging process for multiple tables...")
+    - None: This function does not return any value; it only prints the report to the terminal.
+    """
 
-    # Ensure the log output directory exists; if not, create it
-    log_output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Iterate over each table in the provided list and perform logging and comparison of row counts
-    for table_name in table_list:
-        
-        print(f"\n\tProcessing table: {table_name}")
-
-        # Initialize logger and handler to None; they will be configured later if the contract is successfully loaded
-        logger, handler = None, None
-
-        # --- Contract Loading and verification ---
-        yaml_path = contract_dir / f"{table_name}.yaml"
-        if not yaml_path.exists():
-            print(f"\t\t⚠️ Warning: No contract (.yaml) found for {table_name}")
-            continue
-
-        try:
-            # --- Load the contract to get the expected number of rows ---
-            with open(yaml_path, 'r') as file:
-                contract = yaml.safe_load(file)
-
-            # --- Get expected row count from the contract ---
-            n_expected_rows = contract.get("expected_rows")
-            if n_expected_rows is None:
-                print(f"\t\t⚠️ Warning: 'expected_rows' not found in contract for {table_name}")
-                continue
-
-            # --- Get actual row count ---
-            # n_actual_rows = client.table(table_name, database=database_name).count().execute() #TODO: CAMBIAR LA SIMULACIÓN POR UNA CONEXIÓN REAL A LA BASE DE DATOS
-            n_actual_rows = 10600 
-
-            # --- Configure logger and get previous row count ---
-            logger, handler, log_path, n_previous_rows = log_table_configurer(table_name, log_output_dir)
-
-            # --- Log logic ---
-            if n_actual_rows == n_expected_rows:
-                logger.info(f"Table: {table_name} OK: {n_actual_rows} rows.")
-            else:
-                logger.warning(f"Table: {table_name} MISMATCH: Actual {n_actual_rows}, Expected {n_expected_rows}")
-
-            # --- Print logic (With difference vs previous) ---
-            diff_text = ""
-            if n_previous_rows is not None:
-                diff = n_actual_rows - n_previous_rows
-                simbolo = "+" if diff > 0 else ""
-                diff_text = f"(Dif. vs previous: {simbolo}{diff})"
-            else:
-                diff_text = "(No previous data - First run)"
-
-            # Print if the result is OK or MISMATCH
-            print(f"\t\t{'✅ OK' if n_actual_rows == n_expected_rows else '⚠️ MISMATCH'}: Actual Rows: {n_actual_rows} | Expected Rows: {n_expected_rows} | {diff_text}")
-
-        except Exception as e:
-            if logger:
-                logger.error(f"Failed to process table '{table_name}': {e}")
-            print(f"❌ Table '{table_name}' failed: {e}")
-        
-        finally:
-            if handler:
-                handler.close()
-            if logger and handler:
-                logger.removeHandler(handler)
+    icon = "✅" if (r_stat == "OK" and s_ok) else "⚠️"
+    print(f"\n{icon} TABLE: {tablename}")
+    print(f"   Rows: {r_stat} ({r_act}/{r_exp}) {r_diff}")
+    if s_ok:
+        print(f"   Schema: ✅ OK")
+    else:
+        print(f"   Schema: ❌ ERROR")
+        if miss:
+            print(f"     - Missing: {miss}")
+        if extra:
+            print(f"     - Extra: {extra}")
+        if mism:
+            print(f"     - Types: {mism}")
 
 
-c_dir = Path("./data_contracts")
-l_dir = Path("./logs_n_rows_tablas")
-log_multiples_tables_ibis(None, ["cibeles_historico", "AAA"], "db", c_dir, l_dir) # type: ignore
+# --- CORE VALIDATION FUNCTIONS ---
+
+
+def validate_table(
+    client: ibis.BaseBackend,
+    table_name: str,
+    database: str,
+    contract_path: Path,
+    log_dir: Path,
+    strict_types: bool = False,
+) -> bool:
+    """This function performs a comprehensive validation for a specific table. It checks both
+    the row count and the schema against the defined contract. The function logs the results of
+    each validation step and prints a summary report to the terminal. If any critical error
+    occurs during the process, it logs the error and returns False. Otherwise, it returns True
+    if both row count and schema validations pass.
+
+    Parameters:
+    - client (ibis.BaseBackend): The Ibis backend instance.
+    - table_name (str): The name of the table to validate.
+    - database (str): The name of the database containing the table.
+    - contract_path (Path): The path to the YAML contract file.
+    - log_dir (Path): The directory where log files will be stored.
+    - strict_types (bool): Whether to perform strict type checking.
+
+    Returns:
+    - bool: True if the table passes validation, False otherwise.
+    """
+
+    # Set up logger for this table
+    logger, handler, log_path = setup_table_logger(table_name, log_dir)
+
+    try:
+        # Load contract YAML
+        if not contract_path.exists():
+            print(f"  ⚠️  Contract not found at: {contract_path}")
+            return False
+
+        with open(contract_path, "r") as f:
+            contract = yaml.safe_load(f)
+
+        # Extract actual schema and row count from the database
+        ibis_table = client.table(table_name, database=database)
+        actual_rows = ibis_table.count().execute()
+        actual_schema = {col: str(typ) for col, typ in ibis_table.schema().items()}
+
+        # Row count validation
+        expected_rows = contract.get("expected_rows")
+        prev_rows = get_last_row_count(log_path)
+
+        row_status = "OK" if actual_rows == expected_rows else "MISMATCH"
+        diff_info = (
+            f"(Diff vs previous: {actual_rows - prev_rows:+})"
+            if prev_rows is not None
+            else "(First load)"
+        )
+
+        logger.info(
+            f"ROWS {row_status}: Actual {actual_rows}, Expected {expected_rows} {diff_info}"
+        )
+
+        # Schema validation
+        contract_cols = contract.get("schema", {}).get("columns", {})
+        expected_schema = {
+            k: v.get("type", "unknown")
+            for k, v in contract_cols.items()  # If type is missing in contract, we mark it as 'unknown' to handle it gracefully
+        }
+
+        missing = [
+            c for c in expected_schema if c not in actual_schema
+        ]  # Columns defined in contract but missing in actual schema
+        extra = [
+            c for c in actual_schema if c not in expected_schema
+        ]  # Columns present in actual schema but not defined in contract
+        mismatches = []  # Initially empty list to store type mismatches
+
+        for col, exp_type in expected_schema.items():
+            if col in actual_schema:
+                act_type = actual_schema[col]
+                is_valid = (
+                    (exp_type == act_type)
+                    if strict_types
+                    else types_compatible(
+                        exp_type, act_type
+                    )  # Check compatibility based on logical groups rather than exact match
+                )
+                if not is_valid:
+                    mismatches.append(
+                        f"{col}: {act_type} (expected {exp_type})"
+                    )  # If there's a type mismatch, we add a descriptive message to the mismatches list
+
+        schema_ok = not (missing or extra or mismatches)
+        if (
+            schema_ok
+        ):  # If there are no missing columns, no extra columns, and no type mismatches, we log that the schema is OK
+            logger.info("SCHEMA OK: All columns and types match.")
+        else:  # If there are any issues with the schema, we log a warning with details about missing columns, extra columns, and type mismatches
+            logger.warning(
+                f"SCHEMA ERROR: Missing: {missing} | Extra: {extra} | Types: {mismatches}"
+            )
+
+        # Print terminal report with all the details
+        print_terminal_report(
+            table_name,
+            row_status,
+            actual_rows,
+            expected_rows,
+            diff_info,
+            schema_ok,
+            missing,
+            extra,
+            mismatches,
+        )
+
+        return row_status == "OK" and schema_ok
+
+    # Throw an exception if there's a critical error during the validation process.
+    except Exception as e:
+        logger.error(f"FATAL ERROR in '{table_name}': {str(e)}")
+        print(f"  ❌ Critical failure in '{table_name}': {e}")
+        return False
+    # Ensure that the file handler is properly closed and removed from the logger to prevent resource leaks and duplicate logging in future runs.
+    finally:
+        handler.close()
+        logger.removeHandler(handler)
+
+
+def run_global_audit(
+    client: ibis.BaseBackend, tables: List[str], db_name: str, c_dir: Path, l_dir: Path
+) -> None:
+    """This function orchestrates the global audit process for multiple tables. It
+    iterates through a list of table names, validates each table using the `validate_table`
+    function, and keeps track of the results. The function also ensures that the log
+    directory exists before starting the audit. At the end of the process, it prints
+    a summary report indicating how many tables passed validation out of the total
+    number of tables audited.
+
+    Parameters:
+    - client (ibis.BaseBackend): The Ibis backend instance.
+    - tables (List[str]): A list of table names to be audited.
+    - db_name (str): The name of the database containing the tables.
+    - c_dir (Path): The directory where contract YAML files are stored.
+    - l_dir (Path): The directory where log files will be stored.
+
+    Returns:
+    - None: This function does not return any value; it only performs the audit and prints the results to the terminal.
+    """
+    print(f"--- STARTING AUDIT ON DB:{db_name} ---")
+    l_dir.mkdir(parents=True, exist_ok=True)
+
+    results = {"total": len(tables), "passed": 0}
+
+    for table in tables:
+        yaml_file = c_dir / f"{table}.yaml"
+        success = validate_table(client, table, db_name, yaml_file, l_dir)
+        if success:
+            results["passed"] += 1
+
+    print(f"\n{'='*40}")
+    print(f"SUMMARY: {results['passed']}/{results['total']} tables passed.")
+    print(f"{'='*40}")
