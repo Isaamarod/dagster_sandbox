@@ -260,6 +260,7 @@ def validate_table(
             else "(First load)"
         )
 
+        logger.info("="*80) # Log separator for better readability between runs
         logger.info(
             f"ROWS {row_status}: Current {current_rows}, Expected {expected_rows} {row_diff_info}"
         )
