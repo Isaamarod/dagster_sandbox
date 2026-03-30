@@ -2,7 +2,7 @@ name: Deploy Static Site
 
 on:
   push:
-    branches: ["funtions_catalogs"] # Se activa al subir cambios a esta rama
+    branches: ["functions_catalogs"] # Se activa al subir cambios a esta rama
 
 permissions:
   contents: read
