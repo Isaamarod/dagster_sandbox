@@ -1,0 +1,30 @@
+name: Deploy Static Site
+
+on:
+  push:
+    branches: ["funtions_catalogs"] # Se activa al subir cambios a esta rama
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Ruta exacta hacia donde está tu index.html
+          path: './utils-bronze-documentation/utils-bronze-documentation/site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
