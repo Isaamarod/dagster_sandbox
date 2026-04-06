@@ -1,0 +1,38 @@
+#expedcted_schemas/table1.yaml
+
+# ==============================================================================
+# DATA SCHEMA DEFINITION & VALIDATION RULES
+# ==============================================================================
+# INSTRUCTIONS:
+# 1. MANDATORY FIELDS:
+#    - 'type': Must define the data type (string, int, float, timestamp).
+#    - 'nullable': Boolean (true/false). Defines if NULL values are permitted.
+#
+# 2. OPTIONAL FIELDS (Validation only performed if present):
+#    - 'bad_nulls': A list of specific values to be treated as invalid/null 
+#      (e.g., ["-", 0]).
+#    - 'sentinel_values': A list of placeholder values used by legacy systems 
+#      that should be flagged or excluded (e.g., ["NA", "1990-01-01 00:00:00"]).
+#
+# 3. FORMATTING:
+#    - Table name must match the filename.
+#    - Column names must be lowercase and use underscores (snake_case).
+# ==============================================================================
+
+table_name: table 1
+
+columns:
+    column1:
+        type: string
+        nullable: false
+    column2:
+        type: string
+        nullable: false
+    column3:
+        type: int
+        nullable: false
+    column4:
+        type: string
+        nullable: true
+        bad_nulls: ["-"]
+        sentinel_values: ["NA", "Desconocido", "NaN"]
