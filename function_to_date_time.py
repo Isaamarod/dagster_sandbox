@@ -49,7 +49,7 @@ def to_date_time(
 
     # Regex pattern definition
     date_pattern = r"^\d{4}-\d{2}-\d{2}$"  # ISO date format: YYYY-MM-DD
-    datetime_pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"  # ISO datetime format: YYYY-MM-DD HH:MM:SS
+    datetime_pattern = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"  # ISO datetime format extended: YYYY-MM-DD HH:MM:SS
     time_present_pattern = r"\d{1,2}:\d{1,2}"  # Check for time presence (HH:MM)
 
     # Analyze the column to determine if it contains any time information
@@ -67,10 +67,10 @@ def to_date_time(
     # Identify invalid records
     if only_date:
         is_valid = column.re_search(date_pattern) | column.re_search(datetime_pattern)
-        expected_format_desc = "ISO date (YYYY-MM-DD) or datetime (YYYY-MM-DD HH:MM:SS)"
+        expected_format_desc = "ISO date (YYYY-MM-DD) or datetime (YYYY-MM-DD HH:MM:SS)" # Without T separator for time
     else:
         is_valid = column.re_search(datetime_pattern)
-        expected_format_desc = "ISO datetime (YYYY-MM-DD HH:MM:SS)"
+        expected_format_desc = "ISO datetime (YYYY-MM-DD HH:MM:SS)" # Without T separator for time
 
     # Check for invalid records
     invalid_count = (~is_valid).sum().execute()
