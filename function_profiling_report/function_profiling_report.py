@@ -465,8 +465,9 @@ def print_profiling_report(
                 print(f"  {stat_name}:")
                 if isinstance(stat_value, dict) and stat_value:
                     for key, count in stat_value.items():
-                        print(f"    '{key}': {count}")
-
+                        if count > 0:
+                            print(f"    '{key}': {count}")
+                
             elif stat_name == "type":
                 print(f"  {stat_name}: {stat_value} (Contract: {type_in_contract})")
                 if type_in_contract != "N/A" and not ibis_types_compatible(
