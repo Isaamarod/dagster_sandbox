@@ -92,19 +92,34 @@ def string_format_analysis(table: ibis.Table, col_name: str) -> dict:
         that do not match any of the predefined patterns will be categorized as "mixed_or_other".
 
     Example format categories:
-        - "iso_datetime_t": ISO datetime format with 'T' separator (e.g., "2023-10-01T12:00:00")
-        - "iso_datetime_space": ISO datetime format with space separator (e.g., "2023-10-01 12:00:00")
-        - "iso_date_only": ISO date format without time (e.g., "2023-10-01")
-        - "slash_datetime": Datetime format with slashes (e.g., "10/01/2023 12:00:00")
-        - "slash_date_only": Date format with slashes (e.g., "10/01/2023")
-        - "time_only": Time format (e.g., "12:00:00")
-        - "decimal_dot": Decimal number with dot as separator (e.g., "123.45")
-        - "decimal_comma": Decimal number with comma as separator (e.g., "123,45")
-        - "mixed_separators": Number containing both dots and commas as separators (e.g., "1.234,56" or "1,234.56")
-        - "integer": Integer number (e.g., "123")
-        - "only_alpha": Text containing only alphabetic characters (e.g., "Hello World") #TODO: Añadir . y , ?
-        - "alphanumeric": Text containing both alphabetic and numeric characters (e.g., "Hello123") #TODO: Añadir . y , ?
-        - "mixed_or_other": Values that do not fit into any of the above categories (e.g., "Hello 123Ç+^&*()")
+        - iso_t_ms_z: "YYYY-MM-DDTHH:MM:SS.mmmZ" (e.g., 2024-06-01T12:34:56.789Z
+        - iso_t_ms_offset: "YYYY-MM-DDTHH:MM:SS.mmm+HH:MM" (e.g., 2024-06-01T12:34:56.789+02:00)
+        - iso_t_s_z: "YYYY-MM-DDTHH:MM:SSZ" (e.g., 2024-06-01T12:34:56Z)
+        - iso_t_s_offset: "YYYY-MM-DDTHH:MM:SS+HH:MM" (e.g., 2024-06-01T12:34:56+02:00)
+        - iso_t_no_tz: "YYYY-MM-DDTHH:MM:SS" (e.g., 2024-06-01T12:34:56)
+        - space_ms_no_tz: "YYYY-MM-DD HH:MM:SS.mmm" (e.g., 2024-06-01 12:34:56.789) 
+        - space_s_no_tz: "YYYY-MM-DD HH:MM:SS" (e.g., 2024-06-01 12:34:56)
+        - date_iso_ymd: "YYYY-MM-DD" (e.g., 2024-06-01)
+        - date_slash_ymd: "YYYY/MM/DD" (e.g., 2024/06/01)
+        - date_slash_dmy: "DD/MM/YYYY" (e.g., 01/06/2024)
+        - date_dot_dmy: "DD.MM.YYYY" (e.g., 01.06.2024)
+        - date_hyphen_dmy: "DD-MM-YYYY" (e.g., 01-06-2024)
+        - risk_textual_month: "DD-MMM-YYYY" (e.g., 01-JAN-2024) High risk for standard SQL casters
+        - risk_short_year: "DD/MM/YY" or "DD-MM-YY" (e.g., 01/01/24 or 01-01-24)
+        - risk_year_month: "YYYY-MM" (e.g., 2024-06)
+        - risk_month_year: "MM-YYYY" (e.g., 06-2024)
+        - time_ms_only: "HH:MM:SS.mmm" (e.g., 12:34:56.789)
+        - time_offset_only: "HH:MM:SS+HH:MM" (e.g., 12:34:56+02:00)
+        - time_z_only: "HH:MM:SSZ" (e.g., 12:34:56Z)
+        - time_hms: "HH:MM:SS" (e.g., 12:34:56)
+        - time_hh_mm: "HH:MM" (e.g., 12:34)
+        - decimal_dot: Decimal numbers with a dot as a separator (e.g., 123.45)
+        - decimal_comma: Decimal numbers with a comma as a separator (e.g., 123,45)
+        - mixed_separators: Numbers with both dot and comma as separators (e.g., 1.234,56 or 1,234.56)
+        - integer: Whole numbers without decimal separators (e.g., 123)
+        - only_alpha: Text values containing only alphabetic characters (e.g., "HelloWorld")
+        - alphanumeric: Text values containing both alphabetic characters and numbers (e.g., "Hello123")
+        - unrecognized: Values that do not match any of the predefined patterns.  
     """
 
     # Get the column object
@@ -112,90 +127,49 @@ def string_format_analysis(table: ibis.Table, col_name: str) -> dict:
 
     # Regex patterns definitions (Hierarchy: more specific to more general)
     patterns = {
-        # 1. Dates and timestamps (ISO: YYYY-MM-DD, with optional time component)
-        "iso_datetime_t": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$",  # Using T: 2023-10-01T12:00:00
-        "iso_datetime_space": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$",  # Using space: 2023-10-01 12:00:00
-        "iso_date_only": r"^\d{4}-\d{2}-\d{2}$",  # Only date: 2023-10-01
-        # 2. Dates and timestamps (Slash: MM/DD/YYYY, with optional time component)
-        "slash_datetime": r"^\d{1,2}/\d{1,2}/\d{4} \d{2}:\d{2}:\d{2}$",  # Using slash with time: 10/01/2023 12:00:00
-        "slash_date_only": r"^\d{1,2}/\d{1,2}/\d{4}$",  # Using slash only for date: 10/01/2023
-        # 3. Times (HH:MM:SS)
-        "time_only": r"^\d{2}:\d{2}:\d{2}$",  # Time only: 12:00:00
-        # 4. Numeric formats
+        # 1. Dates and timestamps
+        # ISO formats
+        "iso_t_ms_z": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$", # 2024-06-01T12:34:56.789Z
+        "iso_t_ms_offset": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+[+-]\d{2}:?\d{2}$", # 2024-06-01T12:34:56.789+02:00
+        "iso_t_s_z": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", # 2024-06-01T12:34:56Z
+        "iso_t_s_offset": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:?\d{2}$", # 2024-06-01T12:34:56+02:00
+        "iso_t_no_tz": r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", # 2024-06-01T12:34:56
+        "space_ms_no_tz": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+$", # 2024-06-01 12:34:56.789
+        "space_s_no_tz": r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$", # 2024-06-01 12:34:56
+        # Standar dates 4-digit year
+        "date_iso_ymd": r"^\d{4}-\d{2}-\d{2}$",  # 2024-06-01
+        "date_slash_ymd": r"^\d{4}/\d{2}/\d{2}$",  # 2024/06/01
+        "date_slash_dmy": r"^\d{1,2}/\d{1,2}/\d{4}$",  # 01/06/2024
+        "date_dot_dmy": r"^\d{1,2}\.\d{1,2}\.\d{4}$",  # 01.06.2024
+        "date_hyphen_dmy": r"^\d{1,2}-\d{1,2}-\d{4}$",  # 01-06-2024
+        # Risky/ambiguous formats
+        "risk_textual_month": r"^\d{1,2}-[a-zA-Z]{3}-\d{4}$",  # 01-JAN-2024 High risk for standard SQL casters
+        "risk_short_year": r"^\d{1,2}[/\.-]\d{1,2}[/\.-]\d{2}$",  # 01/01/24 or 01-01-24
+        # Incomplete dates
+        "risk_year_month": r"^\d{4}-\d{2}$",  # 2024-06
+        "risk_month_year": r"^\d{2}-\d{4}$",  # 06-2024
+        # Time only formats
+        "time_ms_only": r"^\d{2}:\d{2}:\d{2}\.\d+$",  # 12:34:56.789
+        "time_offset_only": r"^\d{2}:\d{2}:\d{2}[+-]\d{2}:?\d{2}$",  # 12:34:56+02:00
+        "time_z_only": r"^\d{2}:\d{2}:\d{2}Z$",  # 12:34:56Z
+        "time_hms": r"^\d{2}:\d{2}:\d{2}$",  # 12:34:56
+        "time_hh_mm": r"^\d{2}:\d{2}$",  # 12:34
+        # 2. Numeric formats
         "decimal_dot": r"^[+-]?\d+\.\d+$",  # 123.45
         "decimal_comma": r"^[+-]?\d+,\d+$",  # 123,45
         "mixed_separators": r"^[+-]?(\d+[\.]\d+[,]\d+|\d+[,]\d+[\.]\d+)[\d.,]*$",  # 1.234,56 or 1,234.56
         "integer": r"^[+-]?\d+$",  # 123
-        # 5. Text
+        # 3. Text
         "only_alpha": r"^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s\-_.,:;]+$",  # Includes accented characters and common text symbols
         "alphanumeric": r"^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-_.,:;]+$",  # Include previous plus numbers
     }
 
-    expr = ibis.ifelse(
-        column.isnull(),
-        "null",
-        ibis.ifelse(
-            column == "",
-            "empty_string",
-            ibis.ifelse(
-                column.re_search(patterns["iso_datetime_t"]),
-                "iso_datetime_t",
-                ibis.ifelse(
-                    column.re_search(patterns["iso_datetime_space"]),
-                    "iso_datetime_space",
-                    ibis.ifelse(
-                        column.re_search(patterns["slash_datetime"]),
-                        "slash_datetime",
-                        ibis.ifelse(
-                            column.re_search(patterns["iso_date_only"]),
-                            "iso_date_only",
-                            ibis.ifelse(
-                                column.re_search(patterns["slash_date_only"]),
-                                "slash_date_only",
-                                ibis.ifelse(
-                                    column.re_search(patterns["time_only"]),
-                                    "time_only",
-                                    ibis.ifelse(
-                                        column.re_search(patterns["decimal_dot"]),
-                                        "decimal_dot",
-                                        ibis.ifelse(
-                                            column.re_search(patterns["decimal_comma"]),
-                                            "decimal_comma",
-                                            ibis.ifelse(
-                                                column.re_search(
-                                                    patterns["mixed_separators"]
-                                                ),
-                                                "mixed_separators",
-                                                ibis.ifelse(
-                                                    column.re_search(
-                                                        patterns["integer"]
-                                                    ),
-                                                    "integer",
-                                                    ibis.ifelse(
-                                                        column.re_search(
-                                                            patterns["only_alpha"]
-                                                        ),
-                                                        "only_alpha",
-                                                        ibis.ifelse(
-                                                            column.re_search(
-                                                                patterns["alphanumeric"]
-                                                            ),
-                                                            "alphanumeric",
-                                                            "mixed_or_other",
-                                                        ),
-                                                    ),
-                                                ),
-                                            ),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
+    # Constructing the CASE expression to classify formats
+    cases = []
+    for key, regex in patterns.items():
+        cases.append((column.re_search(regex), key))
+
+    expr = ibis.cases(*cases, else_="unrecognized")
 
     working_table = table.mutate(format_category=expr)
 
